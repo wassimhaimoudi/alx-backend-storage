@@ -1,2 +1,2 @@
-// a script that lists all documents with name="ALX" in the collection school
+// a script that lists all documents with name "ALX" in the collection school
 db.school.find({ "name": "ALX" })
