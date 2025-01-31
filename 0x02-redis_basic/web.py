@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
-"""web cache and tracker
-"""
+"""Web caching and access tracking implementation using Redis."""
+
 import requests
 import redis
 from functools import wraps
 from typing import Optional
-import time
 
 
 class WebCacheTracker:
+    """Handle web page caching and access tracking using Redis."""
+
     def __init__(self, cache_expiry: int = 10):
-        """Initialize Redis connection and set default cache expiry time
-        
+        """Initialize Redis connection and cache settings.
+
         Args:
-            cache_expiry (int): Cache expiry time in seconds
+            cache_expiry: Number of seconds before cached items expire.
         """
         self.store = redis.Redis()
         self.cache_expiry = cache_expiry
 
     def count_url_access(self, method):
-        """Decorator counting URL accesses and caching responses
-        
+        """Count URL accesses and cache responses.
+
         Args:
-            method: The function to wrap
+            method: The function to wrap.
+
+        Returns:
+            A wrapped function that implements caching and access counting.
+
+        Raises:
+            ValueError: If the URL is empty.
+            RuntimeError: If URL processing fails.
         """
         @wraps(method)
         def wrapper(url: str) -> str:
@@ -31,7 +39,7 @@ class WebCacheTracker:
 
             cached_key = f"cached:{url}"
             count_key = f"count:{url}"
-            
+
             try:
                 # Check cache first
                 cached_data = self.store.get(cached_key)
@@ -42,13 +50,17 @@ class WebCacheTracker:
 
                 # Get fresh data
                 html = method(url)
-                
+
                 # Store in cache with expiry
-                self.store.setex(cached_key, self.cache_expiry, html)
-                
+                self.store.setex(
+                    name=cached_key,
+                    time=self.cache_expiry,
+                    value=html
+                )
+
                 # Increment access counter
                 self.store.incr(count_key)
-                
+
                 return html
 
             except redis.RedisError as e:
@@ -56,18 +68,20 @@ class WebCacheTracker:
                 print(f"Redis error: {e}")
                 return method(url)
             except Exception as e:
-                raise RuntimeError(f"Error processing URL {url}: {str(e)}")
+                raise RuntimeError(
+                    f"Error processing URL {url}: {str(e)}"
+                )
 
         return wrapper
 
     def get_url_count(self, url: str) -> Optional[int]:
-        """Get number of times a URL has been accessed
-        
+        """Get number of times a URL has been accessed.
+
         Args:
-            url (str): The URL to check
-            
+            url: The URL to check.
+
         Returns:
-            int: Number of accesses, or None if error
+            Number of accesses, or None if an error occurs.
         """
         try:
             count = self.store.get(f"count:{url}")
@@ -76,19 +90,36 @@ class WebCacheTracker:
             print(f"Redis error getting count: {e}")
             return None
 
-# Usage example
-tracker = WebCacheTracker(cache_expiry=10)
+
+def create_tracker(cache_expiry: int = 10) -> WebCacheTracker:
+    """Create a new WebCacheTracker instance.
+
+    Args:
+        cache_expiry: Number of seconds before cached items expire.
+
+    Returns:
+        A configured WebCacheTracker instance.
+    """
+    return WebCacheTracker(cache_expiry=cache_expiry)
+
+
+# Example usage
+tracker = create_tracker(cache_expiry=10)
+
 
 @tracker.count_url_access
 def get_page(url: str) -> str:
-    """Returns HTML content of a URL
-    
+    """Retrieve HTML content from a URL.
+
     Args:
-        url (str): The URL to fetch
-        
+        url: The URL to fetch.
+
     Returns:
-        str: The page HTML content
+        The page HTML content.
+
+    Raises:
+        requests.RequestException: If the HTTP request fails.
     """
     response = requests.get(url, timeout=5)
-    response.raise_for_status()  # Raise exception for bad status codes
+    response.raise_for_status()
     return response.text
